@@ -3,17 +3,58 @@
 # Add steps that build, run tests, deploy, and more:
 # https://aka.ms/yaml
 
+# CI simple para pipelines-dotnet-core
+# Ubuntu + .NET 8, cache de NuGet, build, test condicional y publish
+
 trigger:
-- master
+  - master
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
+
+variables:
+  buildConfiguration: 'Release'
+  publishDir: '$(Build.ArtifactStagingDirectory)/site'
 
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+  # 1) Instala SDK .NET (ajusta versión si usas otra)
+  - task: UseDotNet@2
+    displayName: 'Instalar .NET SDK 8.x'
+    inputs:
+      packageType: 'sdk'
+      version: '8.x'
+      includePreviewVersions: false
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+  # 2) Cache de paquetes NuGet (rápido y barato)
+  - task: Cache@2
+    displayName: 'Cache ~/.nuget/packages'
+    inputs:
+      key: 'nuget | "$(Agent.OS)" | */.csproj'
+      restoreKeys: |
+        nuget | "$(Agent.OS)"
+      path: ~/.nuget/packages
+
+  # 3) Restore
+  - script: dotnet restore
+    displayName: 'dotnet restore'
+
+  # 4) Build (no-restore)
+  - script: dotnet build --configuration $(buildConfiguration) --no-restore
+    displayName: 'dotnet build $(buildConfiguration)'
+
+ 
+  # 8) Publish para generar artefacto deployable
+  - script: |
+      dotnet publish pipelines-dotnet-core.csproj \
+        --configuration $(buildConfiguration) \
+        --no-build \
+        --output $(publishDir)
+    displayName: 'dotnet publish → $(publishDir)'
+
+  # 9) Subir artefacto
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publicar artefacto: drop'
+    inputs:
+      PathtoPublish: '$(publishDir)'
+      ArtifactName: 'drop'
+      
